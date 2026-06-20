@@ -1,0 +1,47 @@
+I'll walk you through this in plain steps — no prior SQL knowledge needed. The idea: keep everything your script already does, and just add a few lines that also save each row into a SQL Server table.
+Step 1: Install SQL Server (if you don't have it)
+
+Download SQL Server Express (free) from Microsoft's site.
+Download SSMS (SQL Server Management Studio) — this is the tool you'll use to look at your data, like Excel but for databases.
+During SQL Server install, note the server name (usually localhost\SQLEXPRESS).
+
+Step 2: Create the database and table
+Open SSMS, connect to your server, click "New Query", and run this:SQL script to create database and table for OI recorderSQL script to create database and table for OI recorderHow to run it:
+
+Highlight just the CREATE DATABASE part → click Execute (▶) → wait for "Commands completed successfully".
+Then highlight everything from USE OI_Recorder; down → Execute again.
+
+Step 3: Install the Python-to-SQL driver
+In your command prompt:
+pip install pyodbc
+You also need the "ODBC Driver 17 for SQL Server" installed on Windows — if you have SQL Server installed, you likely already have it. If pyodbc complains later about a missing driver, download it from Microsoft (search "ODBC Driver 17 for SQL Server download").
+Step 4: A small helper module to do the saving
+This keeps the SQL code separate from your main script, so it's easy to manage.Standalone SQL Server logger moduleStandalone SQL Server logger moduleStep 5: Plug it into your existing script
+Just 3 small edits to oi_recorder_pro_equity.py:
+1) Near the top, with your other imports (around line 60):
+pythonimport db_logger
+2) Right before your while running: loop starts (around line 1125), add:
+pythondb_logger.connect()
+3) Inside the loop, right after this existing block (around line 1161):
+python        if csv_writer is not None:
+            csv_writer.writerow(oi_log[-1])
+            csv_fh.flush()
+add:
+python        db_logger.insert_row(ts_str, m)
+4) Find where the script handles Ctrl+C / shutdown (search for where it closes the CSV file or prints "stopped") and add:
+pythondb_logger.close()
+That's it — no other changes needed. Your Excel writing, CSV backup, and everything else keeps working exactly as before; SQL Server just becomes a third place the data goes.
+Step 6: Test it
+
+Run your script for ~30 seconds.
+In SSMS, run:
+
+sql   SELECT TOP 20 * FROM OI_Recorder.dbo.OI_Log ORDER BY id DESC;
+
+You should see your latest rows appear, with log_time timestamps a few seconds apart.
+
+A couple of things worth knowing
+
+If SQL Server isn't running (service stopped), db_logger.connect() just prints a warning — your recorder won't crash, it'll keep writing to Excel/CSV as normal.
+Every 5-second insert is one tiny INSERT statement — SQL Server handles thousands of these per second, so there's no risk of it falling behind your recorder.
+Later, once comfortable, you can query things like "average PCR every minute" directly in SQL instead of Excel — that's the real payoff of moving to a database.
